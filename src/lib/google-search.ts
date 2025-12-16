@@ -6,16 +6,20 @@ export interface SearchResult {
 }
 
 export async function searchGoogle(query: string): Promise<SearchResult[]> {
-    const apiKey = process.env.GOOGLE_API_KEY;
-    const cx = process.env.GOOGLE_SEARCH_CX;
-
-    // Check if credentials are placeholder values or missing
-    if (!apiKey || !cx || apiKey.includes('your_') || cx.includes('your_')) {
-        console.warn('Missing or invalid Google API credentials. Using mock data.');
-        return mockSearch(query);
-    }
+    // Extract the name from the query for good mock data
+    const nameMatch = query.match(/"([^"]+)"/);
+    const name = nameMatch ? nameMatch[1] : query;
 
     try {
+        const apiKey = process.env.GOOGLE_API_KEY;
+        const cx = process.env.GOOGLE_SEARCH_CX;
+
+        // Check if credentials are placeholder values or missing
+        if (!apiKey || !cx || apiKey.includes('your_') || cx.includes('your_')) {
+            console.warn('Missing or invalid Google API credentials. Using mock data.');
+            return mockSearch(name);
+        }
+
         const res = await fetch(
             `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}`
         );
@@ -24,14 +28,14 @@ export async function searchGoogle(query: string): Promise<SearchResult[]> {
             const errorData = await res.json().catch(() => ({}));
             console.warn(`Google API error: ${res.statusText}`, errorData);
             console.warn('Falling back to mock data.');
-            return mockSearch(query);
+            return mockSearch(name);
         }
 
         const data = await res.json();
 
         if (!data.items || data.items.length === 0) {
             console.log('No results from Google API. Using mock data.');
-            return mockSearch(query);
+            return mockSearch(name);
         }
 
         return data.items.map((item: any) => ({
@@ -43,7 +47,8 @@ export async function searchGoogle(query: string): Promise<SearchResult[]> {
     } catch (error) {
         console.error('Search failed:', error);
         console.warn('Falling back to mock data.');
-        return mockSearch(query);
+        // Always return mock data, never throw
+        return mockSearch(name);
     }
 }
 
