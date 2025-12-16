@@ -1,29 +1,63 @@
 import { NextResponse } from 'next/server';
-import { searchGoogle } from '@/lib/google-search';
+import { comprehensiveSearch } from '@/lib/google-search';
+import { calculateRiskScore, RiskAssessment } from '@/lib/risk-scoring';
+
+export interface SearchResponse {
+    success: boolean;
+    assessment: RiskAssessment;
+    searchedFor: {
+        name: string;
+        cityState?: string;
+        email?: string;
+        phone?: string;
+    };
+    timestamp: string;
+}
 
 export async function POST(request: Request) {
     try {
         const { query, cityState, email, phone } = await request.json();
 
         if (!query) {
-            return NextResponse.json({ error: 'Query is required' }, { status: 400 });
+            return NextResponse.json({
+                success: false,
+                error: 'Full name is required'
+            }, { status: 400 });
         }
 
-        console.log(`API: Searching for "${query}" (City: ${cityState}, Email: ${email}, Phone: ${phone})`);
+        console.log(`API: Comprehensive search for "${query}" (City: ${cityState || 'N/A'}, Email: ${email || 'N/A'}, Phone: ${phone || 'N/A'})`);
 
-        // Construct advanced query for data broker sites
-        let searchQuery = `"${query}"`;
-        if (cityState) searchQuery += ` "${cityState}"`;
-        if (email) searchQuery += ` OR "${email}"`;
-        if (phone) searchQuery += ` OR "${phone}"`;
-        searchQuery += ` (site:spokeo.com OR site:whitepages.com OR site:beenverified.com OR site:radaris.com OR site:linkedin.com)`;
+        // Perform comprehensive search across data broker sites
+        const searchResult = await comprehensiveSearch(query, cityState, email, phone);
 
-        // Use Google Custom Search API instead of scraper
-        const results = await searchGoogle(searchQuery);
+        console.log(`Found ${searchResult.exposures.length} exposures across data broker sites`);
 
-        return NextResponse.json({ items: results });
+        // Calculate risk assessment
+        const assessment = calculateRiskScore(searchResult.exposures);
+
+        const response: SearchResponse = {
+            success: true,
+            assessment,
+            searchedFor: {
+                name: query,
+                cityState: cityState || undefined,
+                email: email || undefined,
+                phone: phone || undefined
+            },
+            timestamp: searchResult.timestamp
+        };
+
+        // Also return legacy format for backward compatibility
+        return NextResponse.json({
+            ...response,
+            items: searchResult.rawResults // Legacy format
+        });
+
     } catch (error) {
         console.error('Search API Error:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({
+            success: false,
+            error: 'Search failed. Please try again.'
+        }, { status: 500 });
     }
 }
