@@ -1,4 +1,5 @@
 import { Exposure, DATA_BROKER_SITES, getSiteInfo, getRemovalInstructions } from './risk-scoring';
+import { searchLightweight } from './lightweight-search';
 
 export interface SearchResult {
     title: string;
@@ -86,9 +87,26 @@ export async function comprehensiveSearch(
         }
     }
 
-    // If no results from API, use intelligent fallback
+    // If no results from API, try Lightweight Fallback
     if (allResults.length === 0) {
-        console.log('No API results, generating comprehensive mock data');
+        console.log('No API results, attempting Lightweight Fallback Search...');
+        try {
+            // Broader query for DuckDuckGo
+            const shadowQuery = `${name} ${cityState || ''} (site:spokeo.com OR site:whitepages.com OR site:beenverified.com OR site:radaris.com)`.trim();
+            const lwResults = await searchLightweight(shadowQuery);
+            allResults.push(...lwResults);
+
+            if (lwResults.length > 0) {
+                console.log(`Lightweight search found ${lwResults.length} real results`);
+            }
+        } catch (error) {
+            console.error('Lightweight fallback failed:', error);
+        }
+    }
+
+    // If still no results, use intelligent mock data
+    if (allResults.length === 0) {
+        console.log('No results found, generating comprehensive mock data');
         const mockResults = generateComprehensiveMockData(name, cityState, email, phone);
         allResults.push(...mockResults);
     }
